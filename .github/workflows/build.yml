@@ -1,0 +1,447 @@
+# Public builder: the ONLY place where private sources meet free GitHub-hosted runners.
+#
+# What happens: the workflow checks the private source repos out with a read-only token
+# (secret DDC_SOURCES_TOKEN), builds Linux x64/arm64 and macOS arm64/x64 binaries, runs the
+# leak / licence / Community-only gates and publishes ONLY the finished archives (draft release).
+# Sources are never uploaded as artifacts; all build output is hidden by scripts/q.sh because
+# the logs of a public repository are readable by everyone. The full logs are encrypted with
+# the secret LOG_KEY and are readable only by the owner.
+name: build
+run-name: build ${{ inputs.version }} (${{ inputs.products }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version label
+        default: 0.1.0-preview.1
+      products:
+        description: Comma list of rvt-decode, dwg2excel, ifc2excel, data-viewer
+        default: rvt-decode,dwg2excel,ifc2excel,data-viewer
+      ref_rvt_open:
+        description: rvt-open ref
+        default: feat/cross-platform-20261020
+      ref_dwg_excel:
+        description: ddc-dwg-to-excel ref
+        default: feat/cross-platform-20261020
+      ref_dwg_reader:
+        description: ddc-dwg-reader ref
+        default: feat/cross-platform-20261020
+      ref_ifc_excel:
+        description: ddc-ifc-to-excel ref
+        default: feat/cross-platform-20261020
+      ref_ifc_reader:
+        description: ddc-ifc-reader ref
+        default: master
+      ref_viewer:
+        description: ddc-data-viewer ref
+        default: feat/cross-platform-20261020
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: never
+  PYTHON_VERSION: "3.13"
+  NUITKA_VERSION: "4.3"
+
+jobs:
+  preflight:
+    runs-on: ubuntu-22.04
+    outputs:
+      rvt: ${{ steps.p.outputs.rvt }}
+      dwg: ${{ steps.p.outputs.dwg }}
+      ifc: ${{ steps.p.outputs.ifc }}
+      viewer: ${{ steps.p.outputs.viewer }}
+    steps:
+      - name: Check the source token and the product list
+        id: p
+        env:
+          GH_TOKEN: ${{ secrets.DDC_SOURCES_TOKEN }}
+          PRODUCTS: ${{ inputs.products }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::secret DDC_SOURCES_TOKEN is not set (fine-grained read-only PAT, see README)"; exit 1
+          fi
+          for r in rvt-open ddc-dwg-to-excel ddc-dwg-reader ddc-ifc-to-excel ddc-ifc-reader ddc-data-viewer; do
+            if gh api "repos/${{ github.repository_owner }}/$r" --jq .name >/dev/null 2>&1; then echo "source $r: readable"
+            else echo "::error::token cannot read $r"; exit 1; fi
+          done
+          has() { case ",$PRODUCTS," in *",$1,"*) echo true;; *) echo false;; esac; }
+          { echo "rvt=$(has rvt-decode)"; echo "dwg=$(has dwg2excel)"; echo "ifc=$(has ifc2excel)"; echo "viewer=$(has data-viewer)"; } >> "$GITHUB_OUTPUT"
+
+  rvt-decode:
+    name: rvt-decode (${{ matrix.tag }})
+    needs: preflight
+    if: needs.preflight.outputs.rvt == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { tag: linux-x64,   os: ubuntu-22.04 }
+          - { tag: linux-arm64, os: ubuntu-22.04-arm }
+          - { tag: macos-arm64, os: macos-14 }
+          - { tag: macos-x64,   os: macos-15-intel }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.repository_owner }}/rvt-open
+          ref: ${{ inputs.ref_rvt_open }}
+          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          path: src
+          persist-credentials: false
+      - name: Test
+        working-directory: src
+        run: ../tools/scripts/q.sh test cargo test -q --locked -p rvt-cli
+      - name: Release build (attested gate, hardened profile)
+        working-directory: src
+        run: ../tools/scripts/q.sh build bash ../tools/scripts/build_rvt_decode.sh
+      - name: Leak guard
+        working-directory: src
+        run: ../tools/scripts/q.sh leak ../tools/scripts/leak_guard_bin.sh target/release/rvt-decode
+      - name: Package
+        working-directory: src
+        run: |
+          set -euo pipefail
+          name="rvt-decode-${{ matrix.tag }}"
+          mkdir -p "dist/$name"
+          cp target/release/rvt-decode LICENSE NOTICE "dist/$name/"
+          cp -R licenses "dist/$name/licenses"
+          cargo tree -q --locked -p rvt-cli -e normal --prefix none --format '{p} {l}' | sort -u > "dist/$name/THIRD_PARTY_CRATES.txt"
+          target/release/rvt-decode build-info --json > "dist/$name/BUILD_INFO.json"
+          if [ "$RUNNER_OS" = macOS ]; then codesign --force --sign - --options runtime "dist/$name/rvt-decode"; fi
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          ls -l "dist/$name.tar.gz" | awk '{print $5" bytes"}'
+          target/release/rvt-decode --version
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bin-rvt-decode-${{ matrix.tag }}
+          path: src/dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 2
+      - name: Encrypted debug log
+        if: failure()
+        env:
+          LOG_KEY: ${{ secrets.LOG_KEY }}
+        run: tools/scripts/encrypt_logs.sh rvt-decode-${{ matrix.tag }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: dbg-rvt-decode-${{ matrix.tag }}
+          path: debug-out/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  dwg2excel:
+    name: dwg2excel (${{ matrix.tag }})
+    needs: preflight
+    if: needs.preflight.outputs.dwg == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { tag: linux-x64,   os: ubuntu-22.04 }
+          - { tag: linux-arm64, os: ubuntu-22.04-arm }
+          - { tag: macos-arm64, os: macos-14 }
+          - { tag: macos-x64,   os: macos-15-intel }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.repository_owner }}/ddc-dwg-to-excel
+          ref: ${{ inputs.ref_dwg_excel }}
+          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          path: dwg-excel
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.repository_owner }}/ddc-dwg-reader
+          ref: ${{ inputs.ref_dwg_reader }}
+          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          path: dwg-independent
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build CLI (Nuitka standalone, the repo's own leak + licence gates)
+        run: |
+          export PYTHONUTF8=1
+          tools/scripts/q.sh pip python -m pip install --disable-pip-version-check "nuitka==${NUITKA_VERSION}" "zstandard==0.25.0"
+          export DDC_READER_SHA=$(git -C dwg-independent rev-parse HEAD)
+          tools/scripts/q.sh build python dwg-excel/ci/build_cli.py --reader dwg-independent --out dist --platform-tag ${{ matrix.tag }} --work "$RUNNER_TEMP/nb"
+          ls dist | sed 's/^/  /'
+      - name: Community-only guard
+        run: tools/scripts/q.sh community tools/scripts/community_guard.sh dist
+      - name: Smoke samples (public pinned commits, sha256 verified)
+        run: |
+          python - <<'PY'
+          import hashlib, json, pathlib, urllib.request
+          spec = json.loads(pathlib.Path('dwg-excel/tests/smoke/samples.json').read_text(encoding='utf-8'))
+          out = pathlib.Path('samples'); out.mkdir()
+          for s in spec['samples']:
+              data = urllib.request.urlopen(s['url'], timeout=60).read()
+              assert hashlib.sha256(data).hexdigest() == s['sha256'], s['name']
+              (out / s['name']).write_bytes(data)
+          print(len(spec['samples']), 'samples ok')
+          PY
+      - name: Smoke run
+        run: |
+          EXE=$(ls -d dist/dwg2excel-*-${{ matrix.tag }})/dwg2excel
+          tools/scripts/q.sh version "$EXE" --version
+          tools/scripts/q.sh smoke python dwg-excel/ci/smoke.py run --exe "$EXE" --samples samples --work "$RUNNER_TEMP/smoke" \
+            --out smoke-${{ matrix.tag }}.json --os ${{ matrix.tag }} --arg={in} --arg=--output --arg={out}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bin-dwg2excel-${{ matrix.tag }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 2
+      - name: Encrypted debug log
+        if: failure()
+        env:
+          LOG_KEY: ${{ secrets.LOG_KEY }}
+        run: tools/scripts/encrypt_logs.sh dwg2excel-${{ matrix.tag }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: dbg-dwg2excel-${{ matrix.tag }}
+          path: debug-out/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  ifc2excel:
+    name: ifc2excel (${{ matrix.tag }})
+    needs: preflight
+    if: needs.preflight.outputs.ifc == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { tag: linux-x64,   os: ubuntu-22.04 }
+          - { tag: linux-arm64, os: ubuntu-22.04-arm }
+          - { tag: macos-arm64, os: macos-14 }
+          - { tag: macos-x64,   os: macos-15-intel }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.repository_owner }}/ddc-ifc-to-excel
+          ref: ${{ inputs.ref_ifc_excel }}
+          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          path: ifc-excel
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.repository_owner }}/ddc-ifc-reader
+          ref: ${{ inputs.ref_ifc_reader }}
+          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          path: ifc-independent
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build CLI (Nuitka standalone, the repo's own leak + licence + schema gates)
+        run: |
+          export PYTHONUTF8=1
+          tools/scripts/q.sh pip python -m pip install --disable-pip-version-check "nuitka==${NUITKA_VERSION}" "zstandard==0.25.0" -r ifc-excel/requirements.txt
+          export DDC_READER_SHA=$(git -C ifc-independent rev-parse HEAD)
+          tools/scripts/q.sh build python ifc-excel/ci/build_cli.py --reader ifc-independent --out dist --platform-tag ${{ matrix.tag }} --work "$RUNNER_TEMP/nb"
+          ls dist | sed 's/^/  /'
+      - name: Community-only guard
+        run: tools/scripts/q.sh community tools/scripts/community_guard.sh dist
+      - name: Smoke run (3 samples committed in the source repo)
+        run: |
+          mkdir samples
+          cp ifc-excel/fixtures/buildingsmart/column-straight-rectangle-tessellation.ifc samples/bsi_column.ifc
+          cp ifc-excel/quality/acceptance09/authored.ifc samples/ddc_acceptance09.ifc
+          cp ifc-excel/quality/acceptance10/authored.ifc samples/ddc_acceptance10.ifc
+          EXE=$(ls -d dist/ifc2excel-*-${{ matrix.tag }})/ifc2excel
+          tools/scripts/q.sh version "$EXE" --version
+          tools/scripts/q.sh smoke python ifc-excel/ci/smoke.py run --exe "$EXE" --samples samples --work "$RUNNER_TEMP/smoke" \
+            --out smoke-${{ matrix.tag }}.json --os ${{ matrix.tag }} --arg={in} --arg=--output --arg={out} --arg=--raw-tables
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bin-ifc2excel-${{ matrix.tag }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 2
+      - name: Encrypted debug log
+        if: failure()
+        env:
+          LOG_KEY: ${{ secrets.LOG_KEY }}
+        run: tools/scripts/encrypt_logs.sh ifc2excel-${{ matrix.tag }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: dbg-ifc2excel-${{ matrix.tag }}
+          path: debug-out/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  data-viewer:
+    name: data-viewer (${{ matrix.tag }})
+    needs: preflight
+    if: needs.preflight.outputs.viewer == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { tag: linux-x64,   os: ubuntu-22.04,     target: x86_64-unknown-linux-gnu,  bundles: "appimage,deb" }
+          - { tag: linux-arm64, os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, bundles: "appimage,deb" }
+          - { tag: macos-arm64, os: macos-14,         target: aarch64-apple-darwin,      bundles: "app,dmg" }
+          - { tag: macos-x64,   os: macos-15-intel,   target: x86_64-apple-darwin,       bundles: "app,dmg" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      DDV_NOTICES_TARGET: ${{ matrix.target }}
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+      NO_STRIP: "true"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.repository_owner }}/ddc-data-viewer
+          ref: ${{ inputs.ref_viewer }}
+          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          path: src
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+      - name: Linux system libraries (WebKitGTK 4.1)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+            libayatana-appindicator3-dev patchelf file >/dev/null
+      - name: Web bundle
+        working-directory: src
+        run: |
+          ../tools/scripts/q.sh npm-ci npm ci --no-audit --no-fund --silent
+          ../tools/scripts/q.sh web npm run build --silent
+      - name: Bundle
+        working-directory: src
+        run: |
+          CH="${CARGO_HOME:-$HOME/.cargo}"; RH="${RUSTUP_HOME:-$HOME/.rustup}"
+          export RUSTFLAGS="--remap-path-prefix=$HOME=/home --remap-path-prefix=$RH=/rustup --remap-path-prefix=$CH/git/checkouts=/cargo/git --remap-path-prefix=$CH/registry/src=/cargo/registry --remap-path-prefix=$GITHUB_WORKSPACE/src=/ddv"
+          mkdir -p "$RUNNER_TEMP/devbins" && mv src-tauri/src/bin/* "$RUNNER_TEMP/devbins/" && rmdir src-tauri/src/bin
+          ../tools/scripts/q.sh bundle npx --yes @tauri-apps/cli@2.12.1 build --ci --bundles ${{ matrix.bundles }} \
+            --config '{"bundle":{"active":true,"category":"Productivity","linux":{"deb":{"section":"utils"}}}}'
+      - name: Third-party notices (permissive-only check)
+        working-directory: src
+        run: ../tools/scripts/q.sh notices python tools/notices.py out/licenses
+      - name: Collect
+        working-directory: src
+        run: |
+          set -euo pipefail
+          B=src-tauri/target/release/bundle
+          mkdir -p out/dist
+          find "$B" -maxdepth 2 \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' \) -exec cp {} out/dist/ \;
+          if [ -d "$B/macos" ]; then (cd "$B/macos" && tar -czf "$GITHUB_WORKSPACE/src/out/dist/ddc-data-viewer-${{ matrix.tag }}.app.tar.gz" *.app); fi
+          cp out/licenses/THIRD_PARTY_NOTICES.txt out/dist/THIRD_PARTY_NOTICES-data-viewer-${{ matrix.tag }}.txt
+          ls -l out/dist | awk 'NR>1{print $5" "$9}'
+      - name: Leak guard
+        working-directory: src
+        run: |
+          set -euo pipefail
+          if find out/dist src-tauri/target/release/bundle -name '*.map' | grep -q .; then echo "source map shipped"; exit 1; fi
+          n=0
+          for f in out/dist/*.AppImage out/dist/*.deb out/dist/*.dmg; do
+            [ -f "$f" ] || continue
+            if grep -qaE 'C:\\Users|Users/Artem|CC Projects|/home/runner|/Users/runner|\.cargo/registry' "$f"; then n=$((n+1)); fi
+          done
+          [ "$n" = 0 ] || { echo "local path leak in $n package(s)"; exit 1; }
+          echo "leak guard OK"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bin-data-viewer-${{ matrix.tag }}
+          path: src/out/dist/
+          if-no-files-found: error
+          retention-days: 2
+      - name: Encrypted debug log
+        if: failure()
+        env:
+          LOG_KEY: ${{ secrets.LOG_KEY }}
+        run: tools/scripts/encrypt_logs.sh data-viewer-${{ matrix.tag }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: dbg-data-viewer-${{ matrix.tag }}
+          path: debug-out/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  publish:
+    name: SHA256SUMS, signature, draft release
+    needs: [rvt-decode, dwg2excel, ifc2excel, data-viewer]
+    if: always() && !cancelled() && (needs.rvt-decode.result == 'success' || needs.dwg2excel.result == 'success' || needs.ifc2excel.result == 'success' || needs.data-viewer.result == 'success')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write        # draft release in THIS (public) repository only
+      id-token: write        # keyless cosign + provenance
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: bin-*
+          merge-multiple: true
+          path: release
+      - name: SHA256SUMS
+        working-directory: release
+        run: sha256sum * | tee SHA256SUMS
+      - uses: sigstore/cosign-installer@d7543c93d881b35a8faa02e8e3605f69b7a1ce62 # v3.10.0
+      - name: Keyless signature of SHA256SUMS
+        working-directory: release
+        run: |
+          if cosign sign-blob --yes --bundle SHA256SUMS.cosign.bundle SHA256SUMS >/dev/null 2>&1; then echo signed; else echo 'signing failed'; exit 1; fi
+      - name: Build provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: release/*.tar.gz
+      - name: Draft release (assets are the finished archives only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v${VERSION}-run${{ github.run_number }}" release/* --repo "$GITHUB_REPOSITORY" --draft \
+            --title "Community builds ${VERSION}" \
+            --notes "Community builds for Linux and macOS. Verify with SHA256SUMS."
