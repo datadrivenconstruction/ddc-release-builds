@@ -23,19 +23,19 @@ on:
         default: ci-linux-macos-2026-10
       ref_dwg_excel:
         description: ddc-dwg-to-excel ref
-        default: feat/cross-platform-20261020
+        default: ci-linux-macos-2026-10
       ref_dwg_reader:
         description: ddc-dwg-reader ref
-        default: feat/cross-platform-20261020
+        default: ci-linux-macos-2026-10
       ref_ifc_excel:
         description: ddc-ifc-to-excel ref
-        default: feat/cross-platform-20261020
+        default: ci-linux-macos-2026-10
       ref_ifc_reader:
         description: ddc-ifc-reader ref
         default: master
       ref_viewer:
         description: ddc-data-viewer ref
-        default: feat/cross-platform-20261020
+        default: ci-linux-macos-2026-10
 
 permissions:
   contents: read
