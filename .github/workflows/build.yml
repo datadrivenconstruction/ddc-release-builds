@@ -286,6 +286,12 @@ jobs:
           tools/scripts/q.sh version "$EXE" --version
           tools/scripts/q.sh smoke python ifc-excel/ci/smoke.py run --exe "$EXE" --samples samples --work "$RUNNER_TEMP/smoke" \
             --out smoke-${{ matrix.tag }}.json --os ${{ matrix.tag }} --arg={in} --arg=--output --arg={out} --arg=--raw-tables
+      - name: Diagnose a failed smoke run (hidden)
+        if: failure()
+        run: |
+          EXE=$(ls -d dist/ifc2excel-*-${{ matrix.tag }} 2>/dev/null | head -1)/ifc2excel
+          mkdir -p "$RUNNER_TEMP/dbg"
+          "$EXE" samples/bsi_column.ifc --output "$RUNNER_TEMP/diag-out" --raw-tables > "$RUNNER_TEMP/dbg/diag.log" 2>&1 || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-ifc2excel-${{ matrix.tag }}
