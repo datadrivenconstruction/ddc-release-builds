@@ -1,7 +1,7 @@
 # Public builder: the ONLY place where private sources meet free GitHub-hosted runners.
 #
 # What happens: the workflow checks the private source repos out with a read-only token
-# (secret DDC_SOURCES_TOKEN), builds Linux x64/arm64 and macOS arm64/x64 binaries, runs the
+# (read-only deploy keys DK_*), builds Linux x64/arm64 and macOS arm64/x64 binaries, runs the
 # leak / licence / Community-only gates and publishes ONLY the finished archives (draft release).
 # Sources are never uploaded as artifacts; all build output is hidden by scripts/q.sh because
 # the logs of a public repository are readable by everyone. The full logs are encrypted with
@@ -55,18 +55,19 @@ jobs:
       ifc: ${{ steps.p.outputs.ifc }}
       viewer: ${{ steps.p.outputs.viewer }}
     steps:
-      - name: Check the source token and the product list
+      - name: Check the source deploy keys and the product list
         id: p
         env:
-          GH_TOKEN: ${{ secrets.DDC_SOURCES_TOKEN }}
           PRODUCTS: ${{ inputs.products }}
+          K1: ${{ secrets.DK_RVT_OPEN }}
+          K2: ${{ secrets.DK_DDC_DWG_TO_EXCEL }}
+          K3: ${{ secrets.DK_DDC_DWG_READER }}
+          K4: ${{ secrets.DK_DDC_IFC_TO_EXCEL }}
+          K5: ${{ secrets.DK_DDC_IFC_READER }}
+          K6: ${{ secrets.DK_DDC_DATA_VIEWER }}
         run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::secret DDC_SOURCES_TOKEN is not set (fine-grained read-only PAT, see README)"; exit 1
-          fi
-          for r in rvt-open ddc-dwg-to-excel ddc-dwg-reader ddc-ifc-to-excel ddc-ifc-reader ddc-data-viewer; do
-            if gh api "repos/${{ github.repository_owner }}/$r" --jq .name >/dev/null 2>&1; then echo "source $r: readable"
-            else echo "::error::token cannot read $r"; exit 1; fi
+          for v in K1 K2 K3 K4 K5 K6; do
+            if [ -z "${!v}" ]; then echo "::error::a read-only deploy key secret is missing ($v)"; exit 1; fi
           done
           has() { case ",$PRODUCTS," in *",$1,"*) echo true;; *) echo false;; esac; }
           { echo "rvt=$(has rvt-decode)"; echo "dwg=$(has dwg2excel)"; echo "ifc=$(has ifc2excel)"; echo "viewer=$(has data-viewer)"; } >> "$GITHUB_OUTPUT"
@@ -97,7 +98,7 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/rvt-open
           ref: ${{ inputs.ref_rvt_open }}
-          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          ssh-key: ${{ secrets.DK_RVT_OPEN }}
           path: src
           persist-credentials: false
       - name: Test
@@ -168,14 +169,14 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/ddc-dwg-to-excel
           ref: ${{ inputs.ref_dwg_excel }}
-          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          ssh-key: ${{ secrets.DK_DDC_DWG_TO_EXCEL }}
           path: dwg-excel
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: ${{ github.repository_owner }}/ddc-dwg-reader
           ref: ${{ inputs.ref_dwg_reader }}
-          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          ssh-key: ${{ secrets.DK_DDC_DWG_READER }}
           path: dwg-independent
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -253,14 +254,14 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/ddc-ifc-to-excel
           ref: ${{ inputs.ref_ifc_excel }}
-          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          ssh-key: ${{ secrets.DK_DDC_IFC_TO_EXCEL }}
           path: ifc-excel
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: ${{ github.repository_owner }}/ddc-ifc-reader
           ref: ${{ inputs.ref_ifc_reader }}
-          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          ssh-key: ${{ secrets.DK_DDC_IFC_READER }}
           path: ifc-independent
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -334,7 +335,7 @@ jobs:
         with:
           repository: ${{ github.repository_owner }}/ddc-data-viewer
           ref: ${{ inputs.ref_viewer }}
-          token: ${{ secrets.DDC_SOURCES_TOKEN }}
+          ssh-key: ${{ secrets.DK_DDC_DATA_VIEWER }}
           path: src
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
