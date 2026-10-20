@@ -129,6 +129,12 @@ jobs:
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           ls -l "dist/$name.tar.gz" | awk '{print $5" bytes"}'
           target/release/rvt-decode --version
+      - name: Smoke run (small open sample, sha256 verified)
+        working-directory: src
+        run: |
+          name="rvt-decode-${{ inputs.version }}-${{ matrix.tag }}"
+          mkdir -p "$RUNNER_TEMP/unpack" && tar -C "$RUNNER_TEMP/unpack" -xzf "dist/$name.tar.gz"
+          ../tools/scripts/q.sh smoke bash ../tools/scripts/smoke_rvt.sh "$RUNNER_TEMP/unpack/$name/rvt-decode" "$RUNNER_TEMP/smoke"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-rvt-decode-${{ matrix.tag }}
