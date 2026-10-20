@@ -114,7 +114,7 @@ jobs:
         working-directory: src
         run: |
           set -euo pipefail
-          name="rvt-decode-${{ matrix.tag }}"
+          name="rvt-decode-${{ inputs.version }}-${{ matrix.tag }}"
           mkdir -p "dist/$name"
           cp target/release/rvt-decode NOTICE "dist/$name/"
           cp -R licenses "dist/$name/licenses"
@@ -386,9 +386,13 @@ jobs:
           set -euo pipefail
           B=src-tauri/target/release/bundle
           mkdir -p out/dist
-          find "$B" -maxdepth 2 \( -name '*.AppImage' -o -name '*.deb' -o -name '*.dmg' \) -exec cp {} out/dist/ \;
-          if [ -d "$B/macos" ]; then (cd "$B/macos" && tar -czf "$GITHUB_WORKSPACE/src/out/dist/ddc-data-viewer-${{ matrix.tag }}.app.tar.gz" *.app); fi
-          cp out/licenses/THIRD_PARTY_NOTICES.txt out/dist/THIRD_PARTY_NOTICES-data-viewer-${{ matrix.tag }}.txt
+          V=$(python -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          for ext in AppImage deb dmg; do
+            f=$(find "$B" -maxdepth 2 -name "*.$ext" | head -1)
+            [ -n "$f" ] && cp "$f" "out/dist/ddc-data-viewer-$V-${{ matrix.tag }}.$ext"
+          done
+          if [ -d "$B/macos" ]; then (cd "$B/macos" && tar -czf "$GITHUB_WORKSPACE/src/out/dist/ddc-data-viewer-$V-${{ matrix.tag }}.app.tar.gz" *.app); fi
+          cp out/licenses/THIRD_PARTY_NOTICES.txt out/dist/THIRD_PARTY_NOTICES-data-viewer-$V-${{ matrix.tag }}.txt
           ls -l out/dist | awk 'NR>1{print $5" "$9}'
       - name: Leak guard
         working-directory: src
