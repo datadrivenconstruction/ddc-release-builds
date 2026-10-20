@@ -120,8 +120,9 @@ jobs:
           cp -R licenses "dist/$name/licenses"
           cp LICENSE "dist/$name/licenses/LICENSE-Apache-2.0-components.txt"
           cp "$GITHUB_WORKSPACE/tools/legal/EULA.txt" "dist/$name/EULA.txt"
-          printf '%s
-' "DDC RVT Converter, command line (rvt-decode) ${{ inputs.version }}"             "Free for non-commercial use only. Commercial use requires a licence on request: info@datadrivenconstruction.io"             "Terms: EULA.txt. Third-party components: licenses/ and THIRD_PARTY_CRATES.txt." > "dist/$name/LICENSE.txt"
+          { echo "DDC RVT Converter, command line (rvt-decode) ${{ inputs.version }}";
+            echo "Free for non-commercial use only. Commercial use requires a licence on request: info@datadrivenconstruction.io";
+            echo "Terms: EULA.txt. Third-party components: licenses/ and THIRD_PARTY_CRATES.txt."; } > "dist/$name/LICENSE.txt"
           cargo tree -q --locked -p rvt-cli -e normal --prefix none --format '{p} {l}' | sort -u > "dist/$name/THIRD_PARTY_CRATES.txt"
           target/release/rvt-decode build-info --json > "dist/$name/BUILD_INFO.json"
           if [ "$RUNNER_OS" = macOS ]; then codesign --force --sign - --options runtime "dist/$name/rvt-decode"; fi
