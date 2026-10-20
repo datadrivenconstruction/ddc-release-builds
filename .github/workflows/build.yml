@@ -14,28 +14,28 @@ on:
     inputs:
       version:
         description: Release version label
-        default: 0.1.0-preview.1
+        default: 2.0.0
       products:
         description: Comma list of rvt-decode, dwg2excel, ifc2excel, data-viewer
         default: rvt-decode,dwg2excel,ifc2excel,data-viewer
       ref_rvt_open:
         description: rvt-open ref
-        default: ci-linux-macos-2026-10
+        default: fix/p1-compact-outputs-20261016
       ref_dwg_excel:
         description: ddc-dwg-to-excel ref
-        default: ci-linux-macos-2026-10
+        default: master
       ref_dwg_reader:
         description: ddc-dwg-reader ref
-        default: ci-linux-macos-2026-10
+        default: master
       ref_ifc_excel:
         description: ddc-ifc-to-excel ref
-        default: ci-linux-macos-2026-10
+        default: master
       ref_ifc_reader:
         description: ddc-ifc-reader ref
         default: master
       ref_viewer:
         description: ddc-data-viewer ref
-        default: ci-linux-macos-2026-10
+        default: main
 
 permissions:
   contents: read
