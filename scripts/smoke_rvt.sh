@@ -6,6 +6,7 @@ exe="$1"; work="$2"
 url="https://raw.githubusercontent.com/mcneel/rhino.inside-revit/9d33c8545c29d344e54185f67ceebc47070e4e24/docs/static/src/gh-screencaps/revit-openings_v22.rvt"
 want="0873240d8078bbe75f1c372e681f3dd2af46661b5658880522c68977baac29d4"
 mkdir -p "$work"
+"$exe" --version > "$work/version.txt" && [ -s "$work/version.txt" ] || { echo "no version output"; exit 1; }
 curl -fsSL --retry 3 "$url" -o "$work/sample.rvt"
 if command -v sha256sum >/dev/null; then got=$(sha256sum < "$work/sample.rvt" | cut -d' ' -f1); else got=$(shasum -a 256 < "$work/sample.rvt" | cut -d' ' -f1); fi
 [ "$got" = "$want" ] || { echo "sample hash mismatch"; exit 1; }

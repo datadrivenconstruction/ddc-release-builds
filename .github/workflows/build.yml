@@ -217,7 +217,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ runner.os == 'macOS' && '3.13.15' || '3.13.16' }}
       - name: Build CLI (Nuitka standalone, the repo's own leak + licence gates)
         run: |
           export PYTHONUTF8=1
@@ -303,7 +303,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ runner.os == 'macOS' && '3.13.15' || '3.13.16' }}
       - name: Build CLI (Nuitka standalone, the repo's own leak + licence + schema gates)
         run: |
           export PYTHONUTF8=1
@@ -442,6 +442,16 @@ jobs:
             test -s "$B/macos/DDC Data Viewer.app/Contents/Resources/licenses/THIRD_PARTY_NOTICES.txt"
           fi
           echo "package contents OK"
+      - name: Smoke run of the Data Viewer (virtual display on Linux)
+        working-directory: src
+        run: |
+          B=src-tauri/target/release/bundle
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get install -y -qq --no-install-recommends xvfb x11-utils >/dev/null
+            ../tools/scripts/q.sh viewer-smoke bash ../tools/scripts/smoke_viewer.sh linux "$PWD/$(find $B -name '*.AppImage' | head -1)"
+          else
+            ../tools/scripts/q.sh viewer-smoke bash ../tools/scripts/smoke_viewer.sh macos "$PWD/$B/macos/DDC Data Viewer.app"
+          fi
       - name: Collect
         working-directory: src
         run: |
@@ -514,7 +524,13 @@ jobs:
         continue-on-error: true
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
-          subject-path: release/*.tar.gz
+          subject-path: |
+            release/*.tar.gz
+            release/*.tar.xz*
+            release/*.AppImage
+            release/*.deb
+            release/*.dmg
+            release/*.txt
       - name: Draft release (assets are the finished archives only)
         env:
           GH_TOKEN: ${{ github.token }}

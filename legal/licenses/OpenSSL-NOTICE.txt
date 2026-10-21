@@ -1,4 +1,0 @@
-OpenSSL 3 (libcrypto, used by the CPython hashlib module)
-
-Copyright (c) 1998-2024 The OpenSSL Project Authors; Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson.
-OpenSSL 3 is licensed under the Apache License, Version 2.0 (full text: Apache-2.0.txt in this folder).
