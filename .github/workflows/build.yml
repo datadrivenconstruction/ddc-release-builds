@@ -422,6 +422,7 @@ jobs:
           AI=$(find src-tauri/target/release/bundle -name '*.AppImage' | head -1)
           EXTRA=""; [ "${{ inputs.compliance }}" = report ] && EXTRA="--report-only"
           ../tools/scripts/q.sh compliance sudo -E env "PATH=$PATH" python ../tools/scripts/linux_compliance.py --appimage "$AI" --version "$V" --arch ${{ matrix.tag }}             --out out/dist --work "$RUNNER_TEMP/compliance" --notices out/licenses/THIRD_PARTY_NOTICES.txt $EXTRA
+          sudo chown -R "$(id -u):$(id -g)" out src-tauri/target
           [ -z "$EXTRA" ] || { echo "report mode: stopping"; exit 1; }
       - name: Collect
         working-directory: src
