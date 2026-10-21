@@ -146,7 +146,7 @@ def main():
     files = sorted(p for p in root.rglob('*') if p.is_file() and not p.is_symlink() and is_elf(p))
     for f in files:
         rel = f.relative_to(root).as_posix()
-        if f.name.startswith('ddc-data-viewer') or f.name == 'AppRun':
+        if f.name.startswith('ddc-data-viewer') or f.name.startswith('AppRun'):
             continue
         digest = sha256(f)
         pkg, exact = owning_package(rel, digest)
@@ -192,6 +192,8 @@ def main():
     report = a.out / ('THIRD_PARTY_NOTICES-linux-%s.txt' % a.arch)
     report.write_text(notice_text, encoding='utf-8')
     print('libraries: %d files in %d packages, %d source packages' % (len(rows), len(packages), len(sources)))
+    for pkg in sorted(packages):
+        print('PKG %s %s | %s' % (pkg, packages[pkg][0], ', '.join(packages[pkg][3])))
     for p in problems:
         print('PROBLEM:', p)
     if a.report_only:

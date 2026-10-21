@@ -119,14 +119,29 @@ jobs:
           set -euo pipefail
           name="rvt-decode-${{ inputs.version }}-${{ matrix.tag }}"
           mkdir -p "dist/$name"
-          cp target/release/rvt-decode NOTICE "dist/$name/"
+          cp target/release/rvt-decode "dist/$name/"
+          {
+            echo "DDC RVT Converter, command line (rvt-decode) ${{ inputs.version }}"
+            echo "Copyright 2026 DataDrivenConstruction"
+            echo
+            echo "This program is distributed as a binary under the DataDrivenConstruction End-User Licence Agreement"
+            echo "(EULA.txt): free for non-commercial use only; commercial use requires a licence on request"
+            echo "(info@datadrivenconstruction.io). The source code of the first-party libraries it is built from is"
+            echo "licensed by the copyright holder under the Apache License 2.0 (licenses/LICENSE-Apache-2.0-components.txt);"
+            echo "that licence applies to that source code, not to this binary distribution."
+            echo
+            echo "Autodesk and Revit are trademarks of Autodesk, Inc., used only to describe the file formats this software"
+            echo "reads. DataDrivenConstruction is not affiliated with Autodesk, Inc."
+            echo
+            sed -n '/^Third-party attributions/,$p' NOTICE
+          } > "dist/$name/NOTICE.txt"
           cp -R licenses "dist/$name/licenses"
           cp LICENSE "dist/$name/licenses/LICENSE-Apache-2.0-components.txt"
           cp "$GITHUB_WORKSPACE/tools/legal/EULA.txt" "dist/$name/EULA.txt"
           { echo "DDC RVT Converter, command line (rvt-decode) ${{ inputs.version }}";
             echo "Free for non-commercial use only. Commercial use requires a licence on request: info@datadrivenconstruction.io";
             echo "Terms: EULA.txt. Third-party components: licenses/ and THIRD_PARTY_CRATES.txt."; } > "dist/$name/LICENSE.txt"
-          cargo tree -q --locked -p rvt-cli -e normal --prefix none --format '{p} {l}' | sort -u > "dist/$name/THIRD_PARTY_CRATES.txt"
+          cargo tree -q --locked -p rvt-cli -e normal --prefix none --format '{p} {l}' | sed -E 's# \(/[^)]*\)##' | sort -u > "dist/$name/THIRD_PARTY_CRATES.txt"
           target/release/rvt-decode build-info --json > "dist/$name/BUILD_INFO.json"
           if [ "$RUNNER_OS" = macOS ]; then codesign --force --sign - --options runtime "dist/$name/rvt-decode"; fi
           tar -C dist -czf "dist/$name.tar.gz" "$name"
@@ -206,6 +221,7 @@ jobs:
       - name: Build CLI (Nuitka standalone, the repo's own leak + licence gates)
         run: |
           export PYTHONUTF8=1
+          export DDC_LICENSE_HOOK="$GITHUB_WORKSPACE/tools/scripts/python_licenses.py"
           tools/scripts/q.sh pip python -m pip install --disable-pip-version-check "nuitka==${NUITKA_VERSION}" "zstandard==0.25.0"
           export DDC_READER_SHA=$(git -C dwg-independent rev-parse HEAD)
           tools/scripts/q.sh build python dwg-excel/ci/build_cli.py --reader dwg-independent --out dist --platform-tag ${{ matrix.tag }} --work "$RUNNER_TEMP/nb"
@@ -291,6 +307,7 @@ jobs:
       - name: Build CLI (Nuitka standalone, the repo's own leak + licence + schema gates)
         run: |
           export PYTHONUTF8=1
+          export DDC_LICENSE_HOOK="$GITHUB_WORKSPACE/tools/scripts/python_licenses.py"
           tools/scripts/q.sh pip python -m pip install --disable-pip-version-check "nuitka==${NUITKA_VERSION}" "zstandard==0.25.0" -r ifc-excel/requirements.txt
           export DDC_READER_SHA=$(git -C ifc-independent rev-parse HEAD)
           tools/scripts/q.sh build python ifc-excel/ci/build_cli.py --reader ifc-independent --out dist --platform-tag ${{ matrix.tag }} --work "$RUNNER_TEMP/nb"
