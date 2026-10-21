@@ -311,6 +311,25 @@ def main():
     new.write_bytes(runtime + sq.read_bytes())
     new.chmod(0o755)
     shutil.copyfile(new, a.appimage)
+    # 5. self-check of the rebuilt image and of the source archive
+    check = work / 'verify'
+    check.mkdir()
+    subprocess.run([str(new), '--appimage-extract'], cwd=check, env=env, check=True, stdout=subprocess.DEVNULL)
+    vroot = check / 'squashfs-root'
+    doc = vroot / 'usr/share/doc/ddc-data-viewer'
+    for need in ('THIRD_PARTY_NOTICES-linux.txt', 'SOURCE-OFFER.txt', 'REPLACE-LIBRARIES.txt', 'licenses/LGPL-2.1',
+                 'licenses/LGPL-3', 'licenses/GPL-2', 'licenses/GPL-3', 'licenses/MPL-2.0', 'licenses/Apache-2.0'):
+        if not (doc / need).is_file():
+            problems.append('missing in the rebuilt image: ' + need)
+    for pkg in packages:
+        if not (vroot / 'usr/share/doc' / pkg / 'copyright').is_file():
+            problems.append('copyright file missing in the image: ' + pkg)
+    for rel, _pkg in excluded:
+        if (vroot / rel).exists():
+            problems.append('excluded library still present: ' + rel)
+    dsc = len(list(srcdir.glob('*.dsc')))
+    if dsc < len(sources):
+        problems.append('source packages downloaded: %d of %d' % (dsc, len(sources)))
     for p in problems:
         print('PROBLEM:', p)
     return 1 if problems else 0

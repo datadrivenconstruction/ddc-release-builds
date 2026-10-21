@@ -429,6 +429,18 @@ jobs:
           ../tools/scripts/q.sh compliance sudo -E env "PATH=$PATH" python ../tools/scripts/linux_compliance.py --appimage "$AI" --version "$V" --arch ${{ matrix.tag }}             --out out/dist --work "$RUNNER_TEMP/compliance" --notices out/licenses/THIRD_PARTY_NOTICES.txt $EXTRA
           sudo chown -R "$(id -u):$(id -g)" out src-tauri/target
           [ -z "$EXTRA" ] || { echo "report mode: stopping"; exit 1; }
+      - name: Verify package contents (licence files)
+        working-directory: src
+        run: |
+          set -euo pipefail
+          B=src-tauri/target/release/bundle
+          if [ "$RUNNER_OS" = Linux ]; then
+            dpkg-deb -c "$B"/deb/*.deb | grep -q 'usr/share/doc/ddc-data-viewer/THIRD_PARTY_NOTICES.txt'
+            ls out/dist/SOURCE-OFFER.txt out/dist/THIRD_PARTY_NOTICES-linux-*.txt out/dist/*third-party-sources.tar.xz* >/dev/null
+          else
+            test -s "$B/macos/DDC Data Viewer.app/Contents/Resources/licenses/THIRD_PARTY_NOTICES.txt"
+          fi
+          echo "package contents OK"
       - name: Collect
         working-directory: src
         run: |
