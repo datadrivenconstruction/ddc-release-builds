@@ -50,6 +50,8 @@ def main():
     if sys.platform.startswith('linux') and shutil.which('dpkg'):
         pkgs = {}
         for p in natives:
+            if not re.match(r'^lib.*\.so(\.\d+)+$', p.name):
+                continue  # extension modules of the interpreter are not distribution packages
             hit = out(['dpkg', '-S', '*/' + p.name]).splitlines()
             for line in hit:
                 if ': ' in line:
@@ -74,7 +76,7 @@ def main():
             if f.is_file():
                 shutil.copyfile(f, lic / ('common-' + key + '.txt'))
         lines.append('')
-        lines.append('The libraries are used unchanged. Permissive licences only (see the copyright files).')
+        lines.append('The libraries are used unchanged; the licence of each is given in its copyright file.')
     (lic / 'README.txt').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     print('licence files:', len(list(lic.iterdir())))
 
