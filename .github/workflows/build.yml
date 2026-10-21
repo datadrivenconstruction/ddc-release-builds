@@ -18,6 +18,9 @@ on:
       products:
         description: Comma list of rvt-decode, dwg2excel, ifc2excel, data-viewer
         default: rvt-decode,dwg2excel,ifc2excel,data-viewer
+      compliance:
+        description: Linux Data Viewer licence compliance step (full or report)
+        default: full
       ref_rvt_open:
         description: rvt-open ref
         default: fix/p1-compact-outputs-20261016
@@ -376,23 +379,33 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
-            libayatana-appindicator3-dev patchelf file >/dev/null
+            libayatana-appindicator3-dev patchelf file squashfs-tools xz-utils >/dev/null
       - name: Web bundle
         working-directory: src
         run: |
           ../tools/scripts/q.sh npm-ci npm ci --no-audit --no-fund --silent
           ../tools/scripts/q.sh web npm run build --silent
+      - name: Third-party notices (permissive-only check)
+        working-directory: src
+        run: ../tools/scripts/q.sh notices python tools/notices.py out/licenses
       - name: Bundle
         working-directory: src
         run: |
           CH="${CARGO_HOME:-$HOME/.cargo}"; RH="${RUSTUP_HOME:-$HOME/.rustup}"
           export RUSTFLAGS="--remap-path-prefix=$HOME=/home --remap-path-prefix=$RH=/rustup --remap-path-prefix=$CH/git/checkouts=/cargo/git --remap-path-prefix=$CH/registry/src=/cargo/registry --remap-path-prefix=$GITHUB_WORKSPACE/src=/ddv"
           mkdir -p "$RUNNER_TEMP/devbins" && mv src-tauri/src/bin/* "$RUNNER_TEMP/devbins/" && rmdir src-tauri/src/bin
-          ../tools/scripts/q.sh bundle npx --yes @tauri-apps/cli@2.12.1 build --ci --bundles ${{ matrix.bundles }} \
-            --config '{"bundle":{"active":true,"category":"Productivity","linux":{"deb":{"section":"utils"}}}}'
-      - name: Third-party notices (permissive-only check)
+          N="$PWD/out/licenses/THIRD_PARTY_NOTICES.txt"
+          CFG="{\"bundle\":{\"active\":true,\"category\":\"Productivity\",\"resources\":{\"$N\":\"licenses/THIRD_PARTY_NOTICES.txt\"},\"linux\":{\"deb\":{\"section\":\"utils\",\"files\":{\"/usr/share/doc/ddc-data-viewer/THIRD_PARTY_NOTICES.txt\":\"$N\"}}}}}"
+          ../tools/scripts/q.sh bundle npx --yes @tauri-apps/cli@2.12.1 build --ci --bundles ${{ matrix.bundles }} --config "$CFG"
+      - name: Licence compliance (library list, licence texts, matching sources, source offer)
+        if: runner.os == 'Linux'
         working-directory: src
-        run: ../tools/scripts/q.sh notices python tools/notices.py out/licenses
+        run: |
+          V=$(python -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          AI=$(find src-tauri/target/release/bundle -name '*.AppImage' | head -1)
+          EXTRA=""; [ "${{ inputs.compliance }}" = report ] && EXTRA="--report-only"
+          ../tools/scripts/q.sh compliance sudo -E env "PATH=$PATH" python ../tools/scripts/linux_compliance.py --appimage "$AI" --version "$V" --arch ${{ matrix.tag }}             --out out/dist --work "$RUNNER_TEMP/compliance" --notices out/licenses/THIRD_PARTY_NOTICES.txt $EXTRA
+          [ -z "$EXTRA" ] || { echo "report mode: stopping"; exit 1; }
       - name: Collect
         working-directory: src
         run: |
