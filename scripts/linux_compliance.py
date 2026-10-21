@@ -296,6 +296,7 @@ def main():
                 'To reassemble split parts: cat <name>.part* > <name>' if len(parts) > 1 else '', CONTACT))
     (a.out / 'SOURCE-OFFER.txt').write_text(offer, encoding='utf-8')
     shutil.copyfile(a.out / 'SOURCE-OFFER.txt', docdir / 'SOURCE-OFFER.txt')
+    shutil.copyfile(Path(__file__).with_name('REPLACE-LIBRARIES.txt'), docdir / 'REPLACE-LIBRARIES.txt')
 
     # 4. rebuild the AppImage: same runtime, new squashfs
     info = out(['unsquashfs', '-o', str(offset), '-s', str(image)])

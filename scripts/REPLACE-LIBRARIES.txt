@@ -1,0 +1,13 @@
+Using your own version of a bundled LGPL library (for example libglib-2.0.so.0, libgtk-3.so.0)
+
+1. Unpack the AppImage:   ./ddc-data-viewer-*.AppImage --appimage-extract      (creates squashfs-root/)
+2. Build the library from the source in ddc-data-viewer-*-third-party-sources.tar.xz (or your own modified
+   version) and copy it over the file with the same name under squashfs-root/usr/lib/ (the paths of all
+   bundled files are listed in THIRD_PARTY_NOTICES-linux.txt).
+3. Run it:                squashfs-root/AppRun
+   Alternatively keep the AppImage and put your libraries first:
+   LD_LIBRARY_PATH=/path/to/your/libs ./ddc-data-viewer-*.AppImage
+4. Optional: pack the folder again with appimagetool.
+
+The libraries are shipped unchanged from the Ubuntu 22.04 packages, are loaded dynamically (shared objects)
+and can be replaced by any compatible version.
