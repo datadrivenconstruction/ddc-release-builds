@@ -413,7 +413,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/devbins" && mv src-tauri/src/bin/* "$RUNNER_TEMP/devbins/" && rmdir src-tauri/src/bin
           N="$PWD/out/licenses/THIRD_PARTY_NOTICES.txt"
           CFG="{\"bundle\":{\"active\":true,\"category\":\"Productivity\",\"resources\":{\"$N\":\"licenses/THIRD_PARTY_NOTICES.txt\"},\"linux\":{\"deb\":{\"section\":\"utils\",\"files\":{\"/usr/share/doc/ddc-data-viewer/THIRD_PARTY_NOTICES.txt\":\"$N\"}}}}}"
-          ../tools/scripts/q.sh bundle npx --yes @tauri-apps/cli@2.12.1 build --ci --bundles ${{ matrix.bundles }} --config "$CFG"
+          ok=0
+          for attempt in 1 2 3; do
+            if ../tools/scripts/q.sh bundle$attempt npx --yes @tauri-apps/cli@2.12.1 build --ci --bundles ${{ matrix.bundles }} --config "$CFG"; then ok=1; break; fi
+            if [ "$RUNNER_OS" = macOS ]; then for d in /Volumes/dmg.* "/Volumes/DDC Data Viewer"*; do hdiutil detach -force "$d" >/dev/null 2>&1 || true; done; rm -rf src-tauri/target/release/bundle/dmg; fi
+          done
+          [ "$ok" = 1 ]
       - name: Licence compliance (library list, licence texts, matching sources, source offer)
         if: runner.os == 'Linux'
         working-directory: src
