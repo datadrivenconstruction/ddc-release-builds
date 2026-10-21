@@ -250,6 +250,7 @@ def main():
                            capture_output=True, text=True)
         if r.returncode != 0:
             problems.append('source package not available: %s %s' % (src, srcver))
+    print('sources fetched:', len(list(srcdir.iterdir())), 'files')
     archive = a.out / ('ddc-data-viewer-%s-linux-%s-third-party-sources.tar.xz' % (a.version, a.arch))
     subprocess.run('tar -C "%s" -cf - . | xz -T0 -6 > "%s"' % (srcdir, archive), shell=True, check=True)
     parts = [archive]
@@ -257,6 +258,7 @@ def main():
         subprocess.run(['split', '-b', '1900M', '-d', str(archive), str(archive) + '.part'], check=True)
         archive.unlink()
         parts = sorted(a.out.glob(archive.name + '.part*'))
+    print('source archive:', [(p.name, p.stat().st_size) for p in parts])
     names = ', '.join(p.name for p in parts)
     offer = ('Source code offer - DDC Data Viewer %s (Linux %s)\n\n'
              'The AppImage contains free software libraries (see THIRD_PARTY_NOTICES-linux-%s.txt) licensed under the GNU\n'
@@ -273,7 +275,7 @@ def main():
     shutil.copyfile(a.out / 'SOURCE-OFFER.txt', docdir / 'SOURCE-OFFER.txt')
 
     # 4. rebuild the AppImage: same runtime, new squashfs
-    info = out(['unsquashfs', '-s', str(image)])
+    info = out(['unsquashfs', '-o', str(offset), '-s', str(image)])
     comp = re.search(r'Compression (\w+)', info).group(1)
     bs = re.search(r'Block size (\d+)', info).group(1)
     sq = work / 'new.squashfs'
