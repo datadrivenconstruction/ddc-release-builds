@@ -23,6 +23,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+# GPL-only libraries are never bundled (a proprietary application must not ship or link them): they stay a system
+# dependency.  libjbig0 (JBIG-KIT) is GPL-2+ without a linking exception.
+EXCLUDE_PACKAGES = {'libjbig0'}
+# Flagged by the text heuristic but reviewed: the library itself is permissive / LGPL, or dual licensed with a
+# permissive or LGPL choice; the GPL part belongs to tools, tests or an optional plugin that is not bundled.
+REVIEWED_OK = {
+    'libbz2-1.0': 'bzip2 licence (BSD-style)', 'libcap2': 'BSD-3-Clause or GPL-2 (BSD-3-Clause chosen)',
+    'libevdev2': 'MIT', 'libglib2.0-0': 'LGPL-2.1+', 'libglib2.0-dev': 'LGPL-2.1+ tools',
+    'libicu70': 'ICU licence', 'liblcms2-2': 'MIT (GPL-3 only for the separate fast_float plugin)',
+    'liblz4-1': 'BSD-2-Clause (library)', 'libpng16-16': 'libpng licence', 'libsqlite3-0': 'public domain',
+    'libzstd1': 'BSD-3-Clause or GPL-2 (BSD-3-Clause chosen)',
+}
 CONTACT = 'info@datadrivenconstruction.io'
 RELEASES = 'https://github.com/datadrivenconstruction/cad2data-Revit-IFC-DWG/releases'
 
@@ -142,7 +154,7 @@ def main():
     offset = int(out([str(image), '--appimage-offset']))
 
     # 1. what is inside
-    rows, problems, packages = [], [], {}
+    rows, problems, packages, excluded = [], [], {}, []
     files = sorted(p for p in root.rglob('*') if p.is_file() and not p.is_symlink() and is_elf(p))
     for f in files:
         rel = f.relative_to(root).as_posix()
@@ -152,6 +164,9 @@ def main():
         pkg, exact = owning_package(rel, digest)
         if pkg is None:
             problems.append('no distribution package for ' + rel)
+            continue
+        if pkg in EXCLUDE_PACKAGES:
+            excluded.append((rel, pkg))
             continue
         rows.append((rel, pkg, exact, digest))
         packages.setdefault(pkg, []).append(rel)
@@ -167,7 +182,7 @@ def main():
             problems.append('no copyright file for ' + pkg)
         if not names:
             problems.append('no licence found for ' + pkg)
-        if gpl_only(names, text):
+        if pkg not in EXCLUDE_PACKAGES and pkg not in REVIEWED_OK and gpl_only(names, text):
             gpl_flags.append(pkg)
         sources[(src, srcver)] = pkg
         packages[pkg] = (version, src, srcver, names, packages[pkg])
@@ -184,6 +199,14 @@ def main():
     for pkg in sorted(packages):
         version, src, srcver, names, rels = packages[pkg]
         lines.append('  %s %s | source: %s %s | %s' % (pkg, version, src, srcver, ', '.join(names) or '?'))
+    if excluded:
+        lines += ['', 'Not bundled (GPL without a linking exception; install from your distribution if needed):']
+        for pkg in sorted({p for _, p in excluded}):
+            lines.append('  %s %s' % (pkg, package_info(pkg)[0]))
+    lines += ['', 'Reviewed licence notes:']
+    for pkg in sorted(packages):
+        if pkg in REVIEWED_OK:
+            lines.append('  %s: %s' % (pkg, REVIEWED_OK[pkg]))
     lines += ['', 'Files (path inside the AppImage, package, sha256):']
     for rel, pkg, exact, digest in rows:
         lines.append('  %s | %s | %s%s' % (rel, pkg, digest, '' if exact else ' | build-machine copy differs'))
@@ -199,7 +222,12 @@ def main():
     if a.report_only:
         return 1 if problems else 0
 
-    # 2. licence texts into the image
+    # 2. licence texts into the image; GPL-only libraries are removed
+    for rel, _pkg in excluded:
+        (root / rel).unlink()
+        for link in list(root.rglob('*')):
+            if link.is_symlink() and not link.exists():
+                link.unlink()
     docdir = root / 'usr/share/doc/ddc-data-viewer'
     (docdir / 'licenses').mkdir(parents=True, exist_ok=True)
     shutil.copyfile(report, docdir / 'THIRD_PARTY_NOTICES-linux.txt')
