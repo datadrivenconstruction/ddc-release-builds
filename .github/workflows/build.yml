@@ -436,7 +436,7 @@ jobs:
           B=src-tauri/target/release/bundle
           if [ "$RUNNER_OS" = Linux ]; then
             dpkg-deb -c "$B"/deb/*.deb | grep -q 'usr/share/doc/ddc-data-viewer/THIRD_PARTY_NOTICES.txt'
-            ls out/dist/SOURCE-OFFER.txt out/dist/THIRD_PARTY_NOTICES-linux-*.txt out/dist/*third-party-sources.tar.xz* >/dev/null
+            ls out/dist/SOURCE-OFFER-linux-*.txt out/dist/THIRD_PARTY_NOTICES-linux-*.txt out/dist/*third-party-sources.tar.xz* >/dev/null
           else
             test -s "$B/macos/DDC Data Viewer.app/Contents/Resources/licenses/THIRD_PARTY_NOTICES.txt"
           fi

@@ -294,8 +294,9 @@ def main():
              'squashfs-root/usr/lib and can be replaced by your own builds (see README).\n'
              % (a.version, a.arch, a.arch, RELEASES, names,
                 'To reassemble split parts: cat <name>.part* > <name>' if len(parts) > 1 else '', CONTACT))
-    (a.out / 'SOURCE-OFFER.txt').write_text(offer, encoding='utf-8')
-    shutil.copyfile(a.out / 'SOURCE-OFFER.txt', docdir / 'SOURCE-OFFER.txt')
+    offer_file = a.out / ('SOURCE-OFFER-linux-%s.txt' % a.arch)
+    offer_file.write_text(offer, encoding='utf-8')
+    shutil.copyfile(offer_file, docdir / 'SOURCE-OFFER.txt')
     shutil.copyfile(Path(__file__).with_name('REPLACE-LIBRARIES.txt'), docdir / 'REPLACE-LIBRARIES.txt')
 
     # 4. rebuild the AppImage: same runtime, new squashfs
