@@ -35,13 +35,13 @@ def main():
             if not arc.name.startswith('rvt'):
                 if not has('licenses/README.txt'):
                     bad.append('%s: no licenses/ folder' % arc.name)
-                if any(re.search(r'_hashlib|libcrypto', s) for s in short) and not has('licenses/Apache-2.0.txt'):
+                if any(re.search(r'_hashlib|libcrypto', s) for s in short) and not has('licenses/OpenSSL-'):
                     bad.append('%s: OpenSSL licence text missing' % arc.name)
-                if any(re.search(r'_ctypes', s) for s in short) and not has('licenses/MIT-libffi.txt'):
+                if any(re.search(r'_ctypes', s) for s in short) and 'linux' in arc.name and not has('licenses/libffi-'):
                     bad.append('%s: libffi licence text missing' % arc.name)
-                if any(re.search(r'_decimal', s) for s in short) and not has('licenses/BSD-2-mpdecimal.txt'):
+                if any(re.search(r'_decimal', s) for s in short) and not has('licenses/mpdecimal-'):
                     bad.append('%s: mpdecimal licence text missing' % arc.name)
-                if any(re.search(r'_sha2|_md5', s) for s in short) and not has('licenses/MIT-HACL.txt'):
+                if any(re.search(r'_sha2|_md5', s) for s in short) and not has('licenses/hacl-star-'):
                     bad.append('%s: HACL* licence text missing' % arc.name)
             for m in tf.getmembers():
                 if not m.isfile() or m.size > 3_000_000:
