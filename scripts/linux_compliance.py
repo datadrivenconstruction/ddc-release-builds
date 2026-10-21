@@ -130,6 +130,25 @@ def enable_sources():
     run(['sudo', 'apt-get', 'update', '-qq'])
 
 
+def launchpad_source(src, ver, dest):
+    """Fetch a source package of an exact version from Launchpad (when it is gone from the apt indexes)."""
+    import urllib.request
+    base = 'https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/%s/%s/' % (src, re.sub(r'^\d+:', '', ver))
+    dsc_name = '%s_%s.dsc' % (src, re.sub(r'^\d+:', '', ver))
+    dsc = urllib.request.urlopen(base + dsc_name, timeout=120).read()
+    (dest / dsc_name).write_bytes(dsc)
+    text = dsc.decode('utf-8', 'replace')
+    block = text.split('Checksums-Sha256:')[1].splitlines()[1:]
+    for line in block:
+        if not line.startswith(' '):
+            break
+        digest, _size, name = line.split()
+        data = urllib.request.urlopen(base + name, timeout=600).read()
+        if hashlib.sha256(data).hexdigest() != digest:
+            raise RuntimeError('checksum mismatch for ' + name)
+        (dest / name).write_bytes(data)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--appimage', required=True, type=Path)
@@ -140,6 +159,7 @@ def main():
     ap.add_argument('--notices', required=True, type=Path, help='THIRD_PARTY_NOTICES.txt of the application itself')
     ap.add_argument('--report-only', action='store_true')
     a = ap.parse_args()
+    a.arch = re.sub(r'^linux-', '', a.arch)
 
     work = a.work
     shutil.rmtree(work, ignore_errors=True)
@@ -249,7 +269,10 @@ def main():
         r = subprocess.run(['apt-get', 'source', '--download-only', '%s=%s' % (src, srcver)], cwd=srcdir,
                            capture_output=True, text=True)
         if r.returncode != 0:
-            problems.append('source package not available: %s %s' % (src, srcver))
+            try:
+                launchpad_source(src, srcver, srcdir)
+            except Exception as exc:  # noqa: BLE001
+                problems.append('source package not available: %s %s (%s)' % (src, srcver, type(exc).__name__))
     print('sources fetched:', len(list(srcdir.iterdir())), 'files')
     archive = a.out / ('ddc-data-viewer-%s-linux-%s-third-party-sources.tar.xz' % (a.version, a.arch))
     subprocess.run('tar -C "%s" -cf - . | xz -T0 -6 > "%s"' % (srcdir, archive), shell=True, check=True)
