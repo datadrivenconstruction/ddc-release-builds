@@ -10,7 +10,7 @@ import sys
 import tarfile
 from pathlib import Path
 
-FORBIDDEN = re.compile(rb'/home/runner|/Users/runner|C:\Users\|hostedtoolcache')
+FORBIDDEN = re.compile(rb'/home/runner|/Users/runner|C:[/\\]Users[/\\]|hostedtoolcache')
 VENDOR = re.compile(rb'ACadSharp|RealDWG|Teigha|Open Design Alliance', re.I)
 
 
